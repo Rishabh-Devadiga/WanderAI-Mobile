@@ -89,6 +89,17 @@ No mock auth, no bypass, no payload/schema weakening.
 > Complete Technical Documentation, Architecture Guide, and Local Setup Manual.
 
 ---
+## 📱 Download WanderAI
+
+Try the WanderAI Android app.
+
+[**⬇️ Download WanderAI APK**](https://github.com/Rishabh-Devadiga/WanderAI-Mobile/releases/download/v1.0.0/app-debug.apk)
+
+**Installation:**
+1. Download the APK to your Android device.
+2. Open the downloaded file.
+3. Allow installation from this source if Android asks.
+4. Install and launch WanderAI.
 
 ## 1. Project Overview
 
