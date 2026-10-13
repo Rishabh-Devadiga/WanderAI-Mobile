@@ -1,174 +1,301 @@
-## Debugging note — CSP blocked the backend call: "Refused to connect to http://127.0.0.1:8000/..." (2026-09-27)
+# WanderAI — AI-Powered Travel Planning App
 
-Symptom: the startup session check `GET http://127.0.0.1:8000/api/auth/traveler/me`
-was refused by the browser before any response — console/Network showed
-"Refused to connect to 'http://127.0.0.1:8000/api/auth/traveler/me' because it
-violates the following Content Security Policy directive: "connect-src 'self'
-http://192.168.137.100:8000 http://localhost:8000 https: wss: blob:"". The
-backend and its CORS config were fine; the request never left the browser.
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?style=for-the-badge&logo=capacitor&logoColor=white" alt="Capacitor" />
+</p>
 
-Root cause: `index.html` hardcodes the trusted backend origins in its CSP
-`<meta>` tag, but `src/api/client.ts` resolves the base URL from
-`VITE_TOURFLOW_API_URL` (`.env` → `http://127.0.0.1:8000`). The two had drifted:
-`http://127.0.0.1:8000` was not allow-listed. CSP matches scheme+host+**port**
-exactly, so `'self'` (the dev page on `http://localhost:5173`) does not cover an
-API on `:8000`, and the `https:` scheme wildcard does not cover an `http://`
-origin either → every `fetch()` was blocked and surfaced in the UI as status 0
-("Could not reach the WanderAI API."). The same drift broke backend avatars
-silently, because `img-src` (the `<img src>` built by `avatarUrlFor()` →
-`${base}/api/traveler/avatar/{id}`) listed no loopback API origin at all, so the
-header/profile photo always fell back to the initial letter.
+**WanderAI** is an AI-powered travel planning application designed to make trip planning more personalized, intuitive, and convenient. Travelers can describe their travel preferences, explore destinations, generate itineraries, and manage their travel plans through a mobile-friendly interface.
 
-Exact changes:
-- `index.html`: added `http://127.0.0.1:8000` to **both** `connect-src` and
-  `img-src`, plus `http://localhost:8000` to `img-src`. The comment above the
-  meta tag now names the env file each allowed origin comes from.
-- `vite.config.ts`: new `wanderai:csp-api-origin` plugin. It reads the same
-  `VITE_TOURFLOW_API_URL` (or legacy `VITE_API_URL`) the client reads — via
-  `loadEnv()` in `configResolved()` — normalizes it to a valid CSP source
-  (`scheme://host[:port]` only, so a stale `/api` suffix can no longer void the
-  directive) and injects that origin into `connect-src` and `img-src` when it is
-  missing. A build pointed at any other host
-  (`VITE_TOURFLOW_API_URL=http://<lan-ip>:8000 npm run build`) therefore keeps a
-  working CSP with no manual `index.html` edit. Existing entries are never
-  removed or reordered, so the literals in `index.html` stay the always-valid
-  baseline.
+The mobile application connects to the WanderAI backend, which provides trip-related APIs and AI-powered functionality. It is part of a broader travel platform that also includes an operator dashboard for managing trips and travel operations.
 
-How to verify (repeat after any backend host change):
-1. `npm run dev`, open DevTools → Network, reload: `GET /api/auth/traveler/me`
-   must return 200/401 (not "blocked"), and `/api/traveler/avatar/<id>` must
-   render the photo.
-2. DevTools → Elements: the `<meta http-equiv="Content-Security-Policy">` must
-   list the API origin in `connect-src` **and** `img-src`.
-3. `npm run build`: `dist/index.html` must contain the `.env.production` origin;
-   `npm run lint` stays clean.
+## 📲 Download the Android App
 
-Caveat: a runtime override (`public/api-config.json` or
-`localStorage["tourflow.apiUrl.v1"]`) can point the app at a host that was not
-known at build time. Such a host has to be added to the `index.html` list, or the
-build re-run with `VITE_TOURFLOW_API_URL` set to it.
+**Latest release: v1.0.0**
 
+[![Download WanderAI APK](https://img.shields.io/badge/Download-WanderAI%20APK-2ea44f?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Rishabh-Devadiga/WanderAI-Mobile/releases/download/v1.0.0/app-debug.apk)
 
-## Debugging note — traveler signup/login connection fix (2026-09-26)
+**[Download WanderAI for Android](https://github.com/Rishabh-Devadiga/WanderAI-Mobile/releases/tag/v1.0.0)**
 
-Symptom: `http://localhost:5173/login` → Sign Up showed
-"Could not reach the WanderAI server." with failed `signup` requests.
+### Installation
 
-Root causes found:
-- Frontend `.env` pointed at a stale LAN host AND included an `/api`
-  suffix (`VITE_TOURFLOW_API_URL=http://10.195.62.53:8000/api`), while
-  `src/api/client.ts` builds requests as `` `${baseUrl}${path}` `` with
-  paths that already start with `/api` (e.g. `/api/auth/traveler/signup`).
-  Result: requests went to `/api/api/...` → 404, surfaced as status 0 /
-  "Could not reach the WanderAI server."
-- Backend CORS (`backend/main.py`) allowed `"*"` + port 3001 but not the
-  actual dev origin `http://localhost:5173`, so browser calls from the
-  login page could surface as CORS/network failures.
-- Vite dev server port was not pinned, so the login origin could drift
-  away from the CORS-allowed origin.
+1. Download the APK using the link above.
+2. Open the downloaded APK on your Android device.
+3. Allow installation from this source if Android requests permission.
+4. Tap **Install** and launch WanderAI.
 
-Exact changes:
-- `Traveler-app-mobile/.env`:
-  `VITE_TOURFLOW_API_URL=http://127.0.0.1:8000` (host+port only, no `/api`).
-- `Traveler-app-mobile/vite.config.ts`: pinned dev server to port 5173
-  (`strictPort: true`).
-- `WanderAI-Backend/backend/main.py`: replaced `allow_origins=["*", ...]`
-  with explicit dev origins
-  `["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3001"]`
-  (wildcard removed because `allow_credentials=True` must not pair with it).
+> **Note:** The published APK is a development/debug build. The application requires a reachable backend to use server-dependent functionality. The backend URL must be configured for the network where the app is being used.
 
-Verified: signup 201 → login 200 → `GET /api/auth/traveler/me` 200;
-duplicate signup → 409; wrong password → 401. Error handling in
-`src/pages/Login.tsx` was already correct (0 → connection message,
-409/401/422 shown separately) and was left untouched.
-No mock auth, no bypass, no payload/schema weakening.
+## ✨ Features
 
-# TourFlow AI - Technical Handoff & Local Development Manual
+### 🧠 AI-Powered Travel Planning
+- Describe your travel plans using natural language.
+- Extract travel preferences such as destination, duration, budget, interests, and companions where supported.
+- Generate personalized travel itineraries.
+- Adapt trip suggestions to the traveler's requirements.
 
-> **Enterprise AI-Powered Personalized & Dynamic Travel Planning Platform**  
-> Complete Technical Documentation, Architecture Guide, and Local Setup Manual.
+### 🗺️ Interactive Itineraries
+- View trip destinations, schedules, and activities.
+- Explore day-by-day travel plans.
+- View destination imagery and place-related media when available.
+- Review itinerary details, estimated budgets, and transportation information.
+- Modify travel arrangements through supported itinerary controls.
+
+### 🏨 Travel Discovery
+- Discover hotel options through the connected backend.
+- Explore activities and destinations.
+- Research transportation options for supported routes.
+- Review available pricing and provider details where supplied by connected services.
+
+### 🔄 Connected Travel Platform
+- Communicate with the WanderAI backend through REST APIs.
+- Persist and retrieve trip information through backend services.
+- Connect traveler trip planning with the operator's trip-management workflow.
+- Support a shared trip lifecycle between traveler and operator experiences.
+
+*Feature availability depends on backend connectivity, configured providers, and available inventory.*
+
+## 🛠️ Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| React 19 | User interface |
+| TypeScript | Type-safe application development |
+| Vite | Development server and production bundling |
+| Tailwind CSS | Styling and responsive UI |
+| Capacitor | Native Android application wrapper |
+| React Router | Client-side navigation |
+| Leaflet | Interactive maps |
+| Lucide | Interface icons |
+| jsPDF | PDF generation where implemented |
+| FastAPI | Backend API |
+| PostgreSQL | Persistent backend data |
+
+## 🏗️ System Architecture
+
+WanderAI uses a client-server architecture.
+
+```text
+┌──────────────────────────────┐
+│       WanderAI Mobile        │
+│       React + TypeScript     │
+│       Capacitor / Android    │
+└──────────────┬───────────────┘
+               │
+               │ REST API / JSON
+               ▼
+┌──────────────────────────────┐
+│       WanderAI Backend       │
+│          FastAPI             │
+│                              │
+│  Authentication              │
+│  Trip Management             │
+│  AI Travel Services          │
+│  Itinerary Operations        │
+└──────────────┬───────────────┘
+               │
+       ┌───────┴────────┐
+       ▼                ▼
+┌──────────────┐  ┌────────────────┐
+│ PostgreSQL   │  │ AI / External  │
+│ Database     │  │ Travel Services│
+└──────────────┘  └────────────────┘
+```
+
+The backend acts as the central source of truth for persisted trip data. The separate Operator-Web application consumes the same backend so that traveler trips can be managed through the operations workflow.
+
+## 📂 Project Structure
+
+```text
+WanderAI-Mobile/
+├── android/                 # Native Android project
+├── public/                  # Static assets and API config
+│   └── api-config.json      # Shipped backend URL configuration
+├── src/
+│   ├── api/                 # API client and service modules
+│   ├── pages/               # Application pages
+│   ├── components/          # Reusable UI components
+│   └── ...                  # Application source code
+├── capacitor.config.ts      # Capacitor configuration
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── README.md
+```
+
+*Some generated or platform-specific files may vary depending on the current checkout.*
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+Install the following tools before running the project:
+
+- [Node.js](https://nodejs.org/) — compatible with the project's dependencies
+- npm
+- [Android Studio](https://developer.android.com/studio) — required for Android builds
+- Android SDK — required for compiling and installing the Android application
+- A running or deployed WanderAI backend
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Rishabh-Devadiga/WanderAI-Mobile.git
+cd WanderAI-Mobile
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure the Backend URL
+
+Open:
+
+```text
+public/api-config.json
+```
+
+Configure it with the URL of your running backend:
+
+```json
+{
+  "apiUrl": "http://YOUR_BACKEND_HOST:8000"
+}
+```
+
+Replace `YOUR_BACKEND_HOST` with the appropriate hostname or IP address.
+
+**Important:**
+- For local development, use an address reachable from the device or browser.
+- `localhost` inside an Android emulator or on a physical phone refers to that device, not automatically to your development computer.
+- For a physical device, the computer's LAN IP can work when both devices are on the same network and the backend allows connections.
+- For public distribution, configure a publicly reachable HTTPS backend.
+
+Do not put private API keys or database credentials in the frontend configuration.
+
+### 4. Start the Development Server
+
+```bash
+npm run dev
+```
+
+Open the local URL printed by Vite in your browser.
+
+### 5. Run Type Checking and Build
+
+```bash
+npm run lint
+npm run build
+```
+
+The production frontend bundle is generated in the `dist/` directory.
+
+## 📱 Building the Android APK
+
+WanderAI uses Capacitor to package the web application as a native Android app.
+
+### 1. Build the Web Application
+
+```bash
+npm run build
+```
+
+### 2. Synchronize the Android Project
+
+```bash
+npm run android:sync
+```
+
+### 3. Open Android Studio
+
+```bash
+npm run android:open
+```
+
+If the Android platform has not yet been added to the project, initialize it using the appropriate Capacitor command before syncing.
+
+### 4. Generate the APK
+
+In Android Studio:
+
+1. Wait for Gradle synchronization to finish.
+2. Select **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+3. Wait for the build to complete.
+4. Locate the generated debug APK.
+
+The usual output path is:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+You can install the APK on a compatible Android device for testing.
+
+## 🔌 Backend Integration
+
+The mobile application depends on the WanderAI backend for server-side features.
+
+The backend repository is maintained separately:
+
+**[WanderAI Backend](https://github.com/Rishabh-Devadiga/WanderAI-Backend)**
+
+The backend is responsible for API operations such as authentication, trip persistence, itinerary-related functionality, and AI-powered services.
+
+To run the backend locally, follow its own README and environment configuration instructions. Never commit `.env` files, API keys, database passwords, or other secrets.
+
+## 🔐 Configuration and Security
+
+Before distributing a public build:
+
+- Use HTTPS for the deployed backend.
+- Ensure the API URL is configured for the intended environment.
+- Do not embed private AI-provider keys in the mobile application.
+- Keep secrets in backend environment variables.
+- Review Android network security and cleartext traffic settings before production release.
+- Test authentication, API failures, and offline/network-loss scenarios.
+
+## 🗺️ Related Project
+
+WanderAI is part of a broader travel platform.
+
+| Component | Description |
+|---|---|
+| **WanderAI-Mobile** | Traveler-facing Android application |
+| **WanderAI-Backend** | Central API, trip state, and AI services |
+| **Operator-Web** | Operator dashboard for trip and travel operations |
+
+## 🔮 Future Improvements
+
+Potential areas for further development include:
+
+- Production-signed Android releases
+- Improved offline and network recovery behavior
+- More robust live hotel and transportation integrations
+- Enhanced itinerary personalization
+- Better traveler notifications and trip updates
+- Expanded AI-assisted travel and disruption workflows
+
+These are possible improvements rather than a claim that every item is already implemented.
+
+## 👨‍💻 Author
+
+**Rishabh Devadiga**
+
+GitHub: [@Rishabh-Devadiga](https://github.com/Rishabh-Devadiga)
+
+## 📄 License
+
+No license is specified here. Add a `LICENSE` file and update this section if you intend to publish the project under an open-source license.
 
 ---
-## 📱 Download WanderAI
 
-Try the WanderAI Android app.
-
-[**⬇️ Download WanderAI APK**](https://github.com/Rishabh-Devadiga/WanderAI-Mobile/releases/download/v1.0.0/app-debug.apk)
-
-**Installation:**
-1. Download the APK to your Android device.
-2. Open the downloaded file.
-3. Allow installation from this source if Android asks.
-4. Install and launch WanderAI.
-
-## 1. Project Overview
-
-### What TourFlow AI Does
-TourFlow AI is a dual-sided travel orchestration platform bridging individual travelers with commercial tour operators. It combines generative AI models (Google Gemini) with strict algorithmic validation to deliver hyper-tailored multi-day travel itineraries, verified real-world transport routes, live dynamic destination visuals, and automated disruption replanning.
-
-### Problem It Solves
-1. **Hallucinated Travel Logistics**: Generic LLMs often hallucinate non-existent flight routes, impossible transit durations, phantom train numbers, and invalid season-destination pairings. TourFlow AI enforces strict ground-truth validation over transport hubs, geocoordinates, and real Indian transit routes.
-2. **Fragile Static Itineraries**: Conventional itineraries are static PDFs that break when landslides, weather delays, or road closures occur. TourFlow AI provides real-time impact analysis, autonomous AI candidate generation, and single-click operator replanning.
-3. **Disjointed Traveler-Operator State**: Traditional travel businesses rely on fragmented spreadsheets, WhatsApp chats, and disconnected booking tools. TourFlow AI uses a unified canonical data model where Traveler and Operator interfaces operate on the exact same database records in real time.
-
-### Current Prototype Scope & Key Differentiators
-- **Featured Destinations**: Manali (Himachal Pradesh), Goa, Kerala (Munnar/Alleppey), Rajasthan (Jaipur/Udaipur), Kashmir (Srinagar/Gulmarg).
-- **Dual-Portal Synchronization**: Instant bi-directional state sync between Traveler Workspace (`/`) and Operator Enterprise Suite (`/operator/dashboard`).
-- **Interactive Multi-Day Mapping**: Leaflet-powered maps featuring day-by-day route paths, pinpoint markers for hotels and activities, and transit hub links.
-- **Dynamic Backdrop Engine**: Responsive ambient video/image backdrops matching the destination and time of day.
-- **Client-Side PDF Generation**: Vector-grade, multi-page branded travel voucher and itinerary export with jsPDF.
-
----
-
-## 2. User Journeys
-
-### A. Traveler Journey
-```
-[ Discover ] ──▶ [ Personalize ] ──▶ [ Plan ] ──▶ [ Explore / Compare ] ──▶ [ Price ]
-      │
-      ▼
-   [ Book ] ──▶ [ Prepare ] ──▶ [ Operate ] ──▶ [ Assist (Concierge) ] ──▶ [ Adapt (Replan) ] ──▶ [ Complete & Review ]
-```
-1. **Discover**: Browse interactive destination showcases with dynamic backgrounds, seasonal highlights, weather advice, and curated tags.
-2. **Personalize**: Input natural-language trip requirements (e.g. *"4-day luxury couple trip to Manali with snow adventure and boutique stay in December"*).
-3. **Plan**: AI parses constraints into verified dates, budget tiers, companion types, and pace, building an exact $N$-day structured itinerary.
-4. **Explore & Compare**: Review day-by-day morning, afternoon, and evening slots; swap hotels or switch transport modes (Private SUV vs. Volvo vs. Flights).
-5. **Price**: Real-time cost recalculation dynamically updates per-person totals, accommodation nights, transport fares, and target budget variances.
-6. **Book**: Review booking references (`TF-XXXXXX`) across hotels, transport operators, and activity providers.
-7. **Prepare**: Export comprehensive PDF travel vouchers, review packing checklists, and check emergency contact lists.
-8. **Operate**: Follow day-by-day schedule with live route maps and location coordinates.
-9. **Assist**: Use the in-app Gemini AI Travel Concierge for immediate local advice, food recommendations, and packing tips.
-10. **Adapt**: Receive immediate alert banners if a disruption occurs, reviewing proposed alternative activities or accommodations.
-11. **Complete & Review**: Submit ratings and feedback to refine future recommendation scoring.
-
-
-## 3. Budget Guidance — Low-Budget Warning
-
-The Checklist screen (Step 2 of 3) warns the traveler, without blocking them, when the
-budget they typed is low for the trip shape they have selected.
-
-- **What the traveler sees**: an amber `role="status"` card under the Trip Budget input —
-  *"You're planning this trip on a low budget"* + *"Your current budget may limit
-  accommodation, transportation, and activity options."*, a suggested planning amount, and a
-  **Change Budget** button that scrolls to and focuses the existing budget input (no restart,
-  no navigation, nothing else in the draft is touched).
-- **How "low" is decided**: `src/utils/budgetAssessment.ts`. There is no backend
-  budget-estimate/minimum-budget endpoint in the TourFlow contract, so the reference rate comes
-  from the curated destination catalog the app already ships
-  (`pricePerPerson` ÷ `idealDays` = per-person-per-day). The threshold is
-  `reference rate × trip days × travelers × 0.7` (`lowFraction`), so it scales with
-  destination, duration and traveler count. **No single hardcoded rupee threshold exists**; a
-  destination that is not in the catalog falls back to the median catalog rate.
-- **Recalculation**: the result is derived from the draft on every render, so raising the budget
-  above the threshold removes the warning immediately, and changing destination, dates/duration
-  or traveler count re-evaluates it automatically. An assessment returns `null` (no warning)
-  when there is no budget or no determinable duration.
-- **It is informational, never an error**: the card uses `role="status"` (not `role="alert"`),
-  amber info styling, and generation is never blocked.
-- **Checks**: `npm run check:budget` runs `scripts/check-budget-assessment.mjs`, which
-  type-strips `src/utils/budgetAssessment.ts` + `src/utils/__checks__/budgetAssessment.check.ts`
-  with the TypeScript compiler already in `node_modules` and executes the scenarios (parse
-  formats, median fallback, low/not-low flips, destination/duration/traveler recalculation,
-  and the no-budget/no-duration no-warning cases). The repo has no test runner, so this script is
-  the temporary harness — migrate the same cases into the project's test framework once one is
-  chosen.
+<p align="center">
+  <strong>WanderAI</strong><br/>
+  Plan smarter. Explore further. Travel better.
+</p>

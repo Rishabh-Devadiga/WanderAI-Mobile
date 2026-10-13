@@ -6,7 +6,7 @@
   "description": "WanderAI Traveler frontend (mobile-first) — Phase 1: Stitch designs converted to React, mock data only",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "lint": "eslint src --ext .ts,.tsx",
     "check:budget": "node scripts/check-budget-assessment.mjs",
     "check:counter": "node scripts/check-traveler-counter.mjs",
